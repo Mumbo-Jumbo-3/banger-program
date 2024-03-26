@@ -12,6 +12,7 @@ use mpl_token_metadata::instructions::{
     };
 pub use anchor_lang::solana_program::sysvar::instructions::ID as INSTRUCTIONS_ID;
 use crate::state::{Pool, Curve, CreatorFund};
+use crate::errors::CurveError;
 
 #[derive(Accounts)]
 pub struct Buy<'info> {
@@ -44,7 +45,7 @@ pub struct Buy<'info> {
     #[account(mut)]
     pub treasury: SystemAccount<'info>,
     #[account(mut)]
-    pub creator_fund: Account<'info, CreatorFund>,
+    pub creator_vault: Account<'info, CreatorFund>,
 
     #[account(
         mut,
@@ -52,7 +53,7 @@ pub struct Buy<'info> {
         bump = pool.bump,
         has_one = curve,
         has_one = treasury,
-        has_one = creator_fund
+        has_one = creator_vault
     )]
     pub pool: Account<'info, Pool>,
 
@@ -67,25 +68,38 @@ pub struct Buy<'info> {
 }
 
 impl<'info> Buy<'info> {
-    pub fn buy(&mut self, amount_in: u64, num_mint: u64, bumps: &BuyBumps) -> Result<()> {
+    pub fn buy(&mut self, amount_in: u64, num_mint: u64) -> Result<()> {
 
-        // u64 all the way!
         let current_supply = self.mint.supply;
 
-        let mut subtotal = 0.0;
+        let mut subtotal: u64 = 0;
 
-        for i in 0..num_out {
+        for i in 0..num_mint {
             let supply = current_supply + i;
             let price = supply
-                .checked_pow(self.curve.pow as f64)?
-                .checked_div(self.curve.frac as f64);
+                .checked_pow(self.curve.pow as u32).ok_or(CurveError::Overflow)?
+                .checked_div(self.curve.frac as u64).ok_or(CurveError::Overflow)?;
 
-            subtotal += price;
+            subtotal = subtotal.checked_add(price).ok_or(CurveError::Overflow)?;
         }
 
-        // add fees to subtotal, then check if <= amount_in
+        subtotal = subtotal.checked_mul(1_000_000_000).ok_or(CurveError::Overflow)?;
+
+        let banger_fee = subtotal
+            .checked_mul(self.pool.banger_fee as u64).ok_or(CurveError::Overflow)?
+            .checked_div(10000).ok_or(CurveError::Overflow)?;
+
+        let creator_fee = subtotal
+            .checked_mul(self.pool.creator_fee as u64).ok_or(CurveError::Overflow)?
+            .checked_div(10000).ok_or(CurveError::Overflow)?;
+
+        let total = subtotal
+            .checked_add(banger_fee).ok_or(CurveError::Overflow)?
+            .checked_add(banger_fee).ok_or(CurveError::Overflow)?;
         
-        // Transfer subtotal
+        require!(amount_in <= total, CurveError::Slippage);
+
+        // Transfer subtotal to pool
         let accounts = Transfer {
             from: self.buyer.to_account_info(),
             to: self.pool.to_account_info()
@@ -93,51 +107,59 @@ impl<'info> Buy<'info> {
 
         let cpi_ctx = CpiContext::new(self.system_program.to_account_info(), accounts);
 
-        transfer(cpi_ctx, subtotal);
+        transfer(cpi_ctx, subtotal)?;
 
         // Transfer creator fee
         let accounts = Transfer {
             from: self.buyer.to_account_info(),
-            to: self.creator_fund.to_account_info()
+            to: self.creator_vault.to_account_info()
         };
-
         let cpi_ctx = CpiContext::new(self.system_program.to_account_info(), accounts);
-
-        transfer(cpi_ctx, subtotal.checked_mul(0.05));
+        transfer(cpi_ctx, creator_fee)?;
 
         // Transfer Banger fee
         let accounts = Transfer {
             from: self.buyer.to_account_info(),
             to: self.treasury.to_account_info()
         };
-
         let cpi_ctx = CpiContext::new(self.system_program.to_account_info(), accounts);
-
-        transfer(cpi_ctx, subtotal.checked_mul(0.05));
+        transfer(cpi_ctx, banger_fee)?;
 
         let seeds = &[
             &b"authority"[..], 
-            &[bumps.authority]
+            &[self.pool.authority_bump]
         ];
         let signer_seeds = &[&seeds[..]];
 
+        let metadata_program = &self.metadata_program.to_account_info();
+        let token = &self.buyer_ata.to_account_info();
+        let token_owner = &self.buyer.to_account_info();
+        let metadata = &self.metadata.to_account_info();
+        let mint = &self.mint.to_account_info();
+        let authority = &self.authority.to_account_info();
+        let payer = &self.buyer.to_account_info();
+        let system_program = &self.system_program.to_account_info();
+        let sysvar_instructions = &self.sysvar_instructions.to_account_info();
+        let spl_token_program = &self.token_program.to_account_info();
+        let spl_ata_program = &self.associated_token_program.to_account_info();
+
         // Mint token to buyer
         let mint_tokens = MintV1Cpi::new(
-            &self.metadata_program.to_account_info(),
+            metadata_program,
             MintV1CpiAccounts {
-                token: &self.buyer_ata.to_account_info(),
-                token_owner: Some(&self.buyer.to_account_info()),
-                metadata: &self.metadata.to_account_info(),
+                token,
+                token_owner: Some(token_owner),
+                metadata,
                 master_edition: None,
                 token_record: None,
-                mint: &self.mint.to_account_info(),
-                authority: &self.authority.to_account_info(),
+                mint,
+                authority,
                 delegate_record: None,
-                payer: &self.buyer.to_account_info(),
-                system_program: &self.system_program.to_account_info(),
-                sysvar_instructions: &self.sysvar_instructions.to_account_info(),
-                spl_token_program: &self.token_program.to_account_info(),
-                spl_ata_program: &self.associated_token_program.to_account_info(),
+                payer,
+                system_program,
+                sysvar_instructions,
+                spl_token_program,
+                spl_ata_program,
                 authorization_rules_program: None,
                 authorization_rules: None
             },
@@ -146,7 +168,7 @@ impl<'info> Buy<'info> {
                 authorization_data: None
             }
         );
-        mint_tokens.invoke_signed(signer_seeds);
+        mint_tokens.invoke_signed(signer_seeds)?;
         msg!("Tokens minted!");
 
         Ok(())

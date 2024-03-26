@@ -59,7 +59,7 @@ pub struct Init<'info> {
     pub treasury: SystemAccount<'info>,
     // init_if_needed for now
     // must init if first tweet by creator / creatorfund not initialized yet
-    pub creator_fund: Account<'info, CreatorFund>,
+    pub creator_vault: Account<'info, CreatorFund>,
 
     system_program: Program<'info, System>,
     token_program: Program<'info, Token>,
@@ -71,7 +71,7 @@ pub struct Init<'info> {
 }
 
 impl<'info> Init<'info> {
-    pub fn init(&mut self, fee: u64, bumps: &InitBumps) -> Result<()> {
+    pub fn init(&mut self, creator_fee: u16, banger_fee: u16, bumps: &InitBumps) -> Result<()> {
         
         let metadata = &self.metadata.to_account_info();
         let mint = &self.mint.to_account_info();
@@ -134,9 +134,10 @@ impl<'info> Init<'info> {
             admin: self.admin.key(),
             mint: self.mint.key(),
             curve: self.curve.key(),
+            creator_fee,
+            creator_vault: self.creator_vault.key(),
+            banger_fee,
             treasury: self.treasury.key(),
-            creator_fund: self.creator_fund.key(),
-            fee,
             bump: bumps.pool,
             authority_bump: bumps.authority
         });

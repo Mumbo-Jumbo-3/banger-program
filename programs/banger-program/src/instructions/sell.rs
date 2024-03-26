@@ -14,6 +14,7 @@ use mpl_token_metadata::instructions::{
     };
 pub use anchor_lang::solana_program::sysvar::instructions::ID as INSTRUCTIONS_ID;
 use crate::state::{Pool, Curve, CreatorFund};
+use crate::errors::CurveError;
 
 #[derive(Accounts)]
 pub struct Sell<'info> {
@@ -44,7 +45,7 @@ pub struct Sell<'info> {
 
     pub curve: Account<'info, Curve>,
     pub treasury: SystemAccount<'info>,
-    pub creator_fund: Account<'info, CreatorFund>,
+    pub creator_vault: Account<'info, CreatorFund>,
 
     #[account(
         mut,
@@ -52,7 +53,7 @@ pub struct Sell<'info> {
         bump = pool.bump,
         has_one = curve,
         has_one = treasury,
-        has_one = creator_fund
+        has_one = creator_vault
     )]
     pub pool: Account<'info, Pool>,
 
@@ -67,23 +68,38 @@ pub struct Sell<'info> {
 }
 
 impl<'info> Sell<'info> {
-    pub fn sell(&mut self, amount_out: u64, num_burn: i16, bumps: &SellBumps) -> Result<()> {
+    pub fn sell(&mut self, num_burn: u64, amount_out: u64) -> Result<()> {
 
-        // u64 all the way, multiply by basis points, NO DECIMALS
         let current_supply = self.mint.supply;
 
-        let mut total = 0.0;
+        let mut total: u64 = 0;
 
         for i in 0..num_burn {
             let supply = current_supply - (i + 1);
             let price = supply
-                .checked_pow(self.curve.pow as f64)?
-                .checked_div(self.curve.frac as f64);
+                .checked_pow(self.curve.pow as u32).ok_or(CurveError::Overflow)?
+                .checked_div(self.curve.frac as u64).ok_or(CurveError::Overflow)?;
 
-            total += price;
+            total = total.checked_add(price).ok_or(CurveError::Overflow)?;
         }
+
+        total = total.checked_mul(1_000_000_000).ok_or(CurveError::Overflow)?;
+
+        let banger_fee = total
+            .checked_mul(self.pool.banger_fee as u64).ok_or(CurveError::Overflow)?
+            .checked_div(10000).ok_or(CurveError::Overflow)?;
+
+        let creator_fee = total
+            .checked_mul(self.pool.creator_fee as u64).ok_or(CurveError::Overflow)?
+            .checked_div(10000).ok_or(CurveError::Overflow)?;
+
+        let subtotal = total
+            .checked_sub(banger_fee).ok_or(CurveError::Overflow)?
+            .checked_sub(banger_fee).ok_or(CurveError::Overflow)?;
         
-        // Transfer subtotal
+        require!(amount_out >= total, CurveError::Slippage);
+        
+        // Transfer subtotal to seller
         let accounts = Transfer {
             from: self.pool.to_account_info(),
             to: self.seller.to_account_info()
@@ -91,58 +107,63 @@ impl<'info> Sell<'info> {
 
         let cpi_ctx = CpiContext::new(self.system_program.to_account_info(), accounts);
 
-        transfer(cpi_ctx, total.checked_mult(0.9));
+        transfer(cpi_ctx, subtotal)?;
 
         // Transfer creator fee
         let accounts = Transfer {
             from: self.pool.to_account_info(),
-            to: self.creator_fund.to_account_info()
+            to: self.creator_vault.to_account_info()
         };
-
         let cpi_ctx = CpiContext::new(self.system_program.to_account_info(), accounts);
-
-        transfer(cpi_ctx, total.checked_mul(0.05));
+        transfer(cpi_ctx, creator_fee)?;
 
         // Transfer Banger fee
         let accounts = Transfer {
             from: self.pool.to_account_info(),
             to: self.treasury.to_account_info()
         };
-
         let cpi_ctx = CpiContext::new(self.system_program.to_account_info(), accounts);
-
-        transfer(cpi_ctx, total.checked_mul(0.05));
+        transfer(cpi_ctx, banger_fee)?;
 
         // Burn tokens from seller
         let seeds = &[
             &b"authority"[..], 
-            &[bumps.authority]
+            &[self.pool.authority_bump]
         ];
         let signer_seeds = &[&seeds[..]];
+
+        let metadata_program = &self.metadata_program.to_account_info();
+        let authority = &self.authority.to_account_info();
+        let metadata = &self.metadata.to_account_info();
+        let mint = &self.mint.to_account_info();
+        let token = &self.seller_ata.to_account_info();
+        let system_program = &self.system_program.to_account_info();
+        let sysvar_instructions = &self.sysvar_instructions.to_account_info();
+        let spl_token_program = &self.token_program.to_account_info();
         
         let burn_tokens = BurnV1Cpi::new(
-            &self.metadata_program.to_account_info(),
+            metadata_program,
             BurnV1CpiAccounts {
-                authority: &self.authority.to_account_info(),
+                authority,
                 collection_metadata: None,
-                metadata: &self.metadata.to_account_info(),
+                metadata,
                 edition: None,
-                mint: &self.mint.to_account_info(),
-                token: &self.seller_ata.to_account_info(),
+                mint,
+                token,
                 master_edition: None,
                 master_edition_mint: None,
                 master_edition_token: None,
                 edition_marker: None,
                 token_record: None,
-                system_program: &self.system_program.to_account_info(),
-                sysvar_instructions: &self.sysvar_instructions.to_account_info(),
-                spl_token_program: &self.token_program.to_account_info(),
+                system_program,
+                sysvar_instructions,
+                spl_token_program,
             },
             BurnV1InstructionArgs {
                 amount: num_burn as u64
             }
         );
-        burn_tokens.invoke_signed(signer_seeds);
+        burn_tokens.invoke_signed(signer_seeds)?;
         msg!("Tokens burned!");
 
         Ok(())
