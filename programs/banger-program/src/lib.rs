@@ -15,8 +15,10 @@ pub mod banger_program {
         ctx: Context<Init>,
         creator_fee: u16,
         banger_fee: u16,
+        token_name: String,
+        token_metadata_uri: String,
     ) -> Result<()> {
-        ctx.accounts.init(creator_fee, banger_fee, &ctx.bumps)
+        ctx.accounts.init(creator_fee, banger_fee, token_name, token_metadata_uri, &ctx.bumps)
     }
 
     pub fn buy(

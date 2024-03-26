@@ -71,7 +71,14 @@ pub struct Init<'info> {
 }
 
 impl<'info> Init<'info> {
-    pub fn init(&mut self, creator_fee: u16, banger_fee: u16, bumps: &InitBumps) -> Result<()> {
+    pub fn init(
+        &mut self,
+        creator_fee: u16,
+        banger_fee: u16,
+        token_name: String,
+        token_metadata_uri: String,
+        bumps: &InitBumps
+    ) -> Result<()> {
         
         let metadata = &self.metadata.to_account_info();
         let mint = &self.mint.to_account_info();
@@ -110,9 +117,9 @@ impl<'info> Init<'info> {
                 spl_token_program: Some(spl_token_program)
             },
             CreateV1InstructionArgs {
-                name: "Test Banger".to_owned(),
+                name: token_name,
                 symbol: "BNGR".to_owned(),
-                uri: "".to_owned(),
+                uri: token_metadata_uri,
                 seller_fee_basis_points: 0,
                 creators: Some(creator),
                 primary_sale_happened: true,
