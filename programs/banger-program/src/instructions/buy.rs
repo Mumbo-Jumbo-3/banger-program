@@ -32,7 +32,7 @@ pub struct Buy<'info> {
     #[account(
         mut,
         seeds = [b"authority"],
-        pool.authority_bump
+        bump = pool.authority_bump
     )]
     pub authority: Signer<'info>,
 
