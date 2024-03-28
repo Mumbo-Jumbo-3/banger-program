@@ -11,7 +11,7 @@ use mpl_token_metadata::instructions::{
         MintV1Cpi, MintV1CpiAccounts, MintV1InstructionArgs
     };
 pub use anchor_lang::solana_program::sysvar::instructions::ID as INSTRUCTIONS_ID;
-use crate::state::{Pool, Curve, CreatorFund};
+use crate::state::{Pool, Curve};
 use crate::errors::CurveError;
 
 #[derive(Accounts)]
@@ -30,30 +30,37 @@ pub struct Buy<'info> {
     )]
     pub buyer_ata: Account<'info, TokenAccount>,
 
+    /// CHECK: used for signing
     #[account(
         mut,
         seeds = [b"authority"],
         bump = pool.authority_bump
     )]
-    pub authority: Signer<'info>,
+    pub authority: UncheckedAccount<'info>,
 
     /// CHECK: will be checked by metaplex
     #[account(mut)]
     pub metadata: UncheckedAccount<'info>,
 
     pub curve: Account<'info, Curve>,
+
     #[account(mut)]
     pub treasury: SystemAccount<'info>,
-    #[account(mut)]
-    pub creator_vault: Account<'info, CreatorFund>,
+
+    // CHECK: Checked by seeds
+    #[account(
+        mut,
+        seeds = [b"creator_vault", pool.creator_id.as_bytes()],
+        bump
+    )]
+    pub creator_vault: UncheckedAccount<'info>,
 
     #[account(
         mut,
         seeds = [b"pool", mint.key().as_ref()],
         bump = pool.bump,
         has_one = curve,
-        has_one = treasury,
-        has_one = creator_vault
+        has_one = treasury
     )]
     pub pool: Account<'info, Pool>,
 
@@ -78,7 +85,7 @@ impl<'info> Buy<'info> {
             let supply = current_supply + i;
             let price = supply
                 .checked_pow(self.curve.pow as u32).ok_or(CurveError::Overflow)?
-                .checked_div(self.curve.frac as u64).ok_or(CurveError::Overflow)?;
+                .checked_div(self.curve.frac).ok_or(CurveError::Overflow)?;
 
             subtotal = subtotal.checked_add(price).ok_or(CurveError::Overflow)?;
         }

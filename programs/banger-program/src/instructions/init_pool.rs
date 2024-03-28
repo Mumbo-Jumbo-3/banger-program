@@ -18,10 +18,11 @@ use mpl_token_metadata::{
     }
 };
 pub use anchor_lang::solana_program::sysvar::instructions::ID as INSTRUCTIONS_ID;
-use crate::state::{Pool, Curve, CreatorFund};
+use crate::state::{Pool, Curve};
 
 #[derive(Accounts)]
-pub struct Init<'info> {
+#[instruction(creator_id: String)]
+pub struct InitPool<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
 
@@ -39,7 +40,7 @@ pub struct Init<'info> {
         seeds = [b"authority"],
         bump
     )]
-    pub authority: Signer<'info>,
+    pub authority: UncheckedAccount<'info>,
 
     /// CHECK: will be checked by metaplex
     #[account(mut)]
@@ -57,9 +58,13 @@ pub struct Init<'info> {
     pub pool: Account<'info, Pool>,
 
     pub treasury: SystemAccount<'info>,
-    // init_if_needed for now
-    // must init if first tweet by creator / creatorfund not initialized yet
-    pub creator_vault: Account<'info, CreatorFund>,
+
+    #[account(
+        mut,
+        seeds = [b"creator_vault", creator_id.as_bytes()],
+        bump
+    )]
+    pub creator_vault: UncheckedAccount<'info>,
 
     system_program: Program<'info, System>,
     token_program: Program<'info, Token>,
@@ -70,14 +75,15 @@ pub struct Init<'info> {
     pub sysvar_instructions: UncheckedAccount<'info>
 }
 
-impl<'info> Init<'info> {
-    pub fn init(
+impl<'info> InitPool<'info> {
+    pub fn init_pool(
         &mut self,
         creator_fee: u16,
         banger_fee: u16,
         token_name: String,
         token_metadata_uri: String,
-        bumps: &InitBumps
+        creator_id: String,
+        bumps: &InitPoolBumps
     ) -> Result<()> {
         
         let metadata = &self.metadata.to_account_info();
@@ -141,10 +147,10 @@ impl<'info> Init<'info> {
             admin: self.admin.key(),
             mint: self.mint.key(),
             curve: self.curve.key(),
-            creator_fee,
-            creator_vault: self.creator_vault.key(),
-            banger_fee,
             treasury: self.treasury.key(),
+            creator_id,
+            creator_fee,
+            banger_fee,
             bump: bumps.pool,
             authority_bump: bumps.authority
         });

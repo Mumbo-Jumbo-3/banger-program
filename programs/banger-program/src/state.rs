@@ -5,34 +5,35 @@ pub struct Pool {
     pub admin: Pubkey,
     pub mint: Pubkey,
     pub curve: Pubkey,
-    pub creator_fee: u16,
-    pub creator_vault: Pubkey,
-    pub banger_fee: u16,
     pub treasury: Pubkey,
+    pub creator_id: String,
+    pub creator_fee: u16,
+    pub banger_fee: u16,
     pub bump: u8,
     pub authority_bump: u8
 }
 
 impl Space for Pool {
-    const INIT_SPACE: usize = 8 + 32*3 + 2 + 32 + 2 + 32 + 1 + 1;
+    const INIT_SPACE: usize = 8 + 32*4 + (4+32) + 2*2 + 1*4;
 }
 
 #[account]
 pub struct Curve {
-    pub pow: u8,
-    pub frac: u8
+    pub pow: u64,
+    pub frac: u64
 }
 
 impl Space for Curve {
-    const INIT_SPACE: usize = 8 + 1 + 1;
+    const INIT_SPACE: usize = 8 + 8 + 8;
 }
-
+/*
 #[account]
-pub struct CreatorFund {
+pub struct CreatorVault {
     pub twitter_id: u64,
     pub creator_key: Option<Pubkey>, // authority to withdraw, default = admin?
 }
 
-impl Space for CreatorFund {
+impl Space for CreatorVault {
     const INIT_SPACE: usize = 8 + 8 + 4 + 32;
 }
+*/

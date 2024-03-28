@@ -13,7 +13,7 @@ use mpl_token_metadata::instructions::{
         BurnV1InstructionArgs,
     };
 pub use anchor_lang::solana_program::sysvar::instructions::ID as INSTRUCTIONS_ID;
-use crate::state::{Pool, Curve, CreatorFund};
+use crate::state::{Pool, Curve};
 use crate::errors::CurveError;
 
 #[derive(Accounts)]
@@ -44,8 +44,16 @@ pub struct Sell<'info> {
     pub metadata: UncheckedAccount<'info>,
 
     pub curve: Account<'info, Curve>,
+
     pub treasury: SystemAccount<'info>,
-    pub creator_vault: Account<'info, CreatorFund>,
+
+    // CHECK: checked by seeds
+    #[account(
+        mut,
+        seeds = [b"creator_vault", pool.creator_id.as_bytes()],
+        bump
+    )]
+    pub creator_vault: UncheckedAccount<'info>,
 
     #[account(
         mut,
@@ -53,7 +61,6 @@ pub struct Sell<'info> {
         bump = pool.bump,
         has_one = curve,
         has_one = treasury,
-        has_one = creator_vault
     )]
     pub pool: Account<'info, Pool>,
 
@@ -78,7 +85,7 @@ impl<'info> Sell<'info> {
             let supply = current_supply - (i + 1);
             let price = supply
                 .checked_pow(self.curve.pow as u32).ok_or(CurveError::Overflow)?
-                .checked_div(self.curve.frac as u64).ok_or(CurveError::Overflow)?;
+                .checked_div(self.curve.frac).ok_or(CurveError::Overflow)?;
 
             total = total.checked_add(price).ok_or(CurveError::Overflow)?;
         }

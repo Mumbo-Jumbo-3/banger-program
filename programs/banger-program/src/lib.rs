@@ -11,14 +11,23 @@ declare_id!("CYu4zKWC3tNGaJkime2PagfjPCski5YAvS8DwhX25d3o");
 pub mod banger_program {
     use super::*;
 
-    pub fn init(
-        ctx: Context<Init>,
+    pub fn init_curve(
+        ctx: Context<InitCurve>,
+        pow: u64,
+        frac: u64,
+    ) -> Result<()> {
+        ctx.accounts.init_curve(pow, frac)
+    }
+
+    pub fn init_pool(
+        ctx: Context<InitPool>,
         creator_fee: u16,
         banger_fee: u16,
         token_name: String,
         token_metadata_uri: String,
+        creator_id: String
     ) -> Result<()> {
-        ctx.accounts.init(creator_fee, banger_fee, token_name, token_metadata_uri, &ctx.bumps)
+        ctx.accounts.init_pool(creator_fee, banger_fee, token_name, token_metadata_uri, creator_id, &ctx.bumps)
     }
 
     pub fn buy(
@@ -37,6 +46,3 @@ pub mod banger_program {
         ctx.accounts.sell(num_burn, amount_out)
     }
 }
-
-#[derive(Accounts)]
-pub struct Initialize {}
