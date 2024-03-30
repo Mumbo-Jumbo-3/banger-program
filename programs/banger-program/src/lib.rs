@@ -21,13 +21,13 @@ pub mod banger_program {
 
     pub fn init_pool(
         ctx: Context<InitPool>,
+        creator_id: String,
         creator_fee: u16,
         banger_fee: u16,
         token_name: String,
         token_metadata_uri: String,
-        creator_id: String
     ) -> Result<()> {
-        ctx.accounts.init_pool(creator_fee, banger_fee, token_name, token_metadata_uri, creator_id, &ctx.bumps)
+        ctx.accounts.init_pool(creator_id, creator_fee, banger_fee, token_name, token_metadata_uri, &ctx.bumps)
     }
 
     pub fn buy(
@@ -44,5 +44,12 @@ pub mod banger_program {
         amount_out: u64,
     ) -> Result<()> {
         ctx.accounts.sell(num_burn, amount_out)
+    }
+
+    pub fn claim(
+        ctx: Context<Claim>,
+        creator_id: String
+    ) -> Result<()> {
+        ctx.accounts.claim(creator_id)
     }
 }

@@ -53,7 +53,7 @@ pub struct Buy<'info> {
         seeds = [b"creator_vault", pool.creator_id.as_bytes()],
         bump
     )]
-    pub creator_vault: UncheckedAccount<'info>,
+    pub creator_vault: SystemAccount<'info>,
 
     #[account(
         mut,

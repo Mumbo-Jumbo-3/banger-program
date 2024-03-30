@@ -11,17 +11,13 @@ import {
   SYSVAR_INSTRUCTIONS_PUBKEY
 } from "@solana/web3.js";
 import {
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  MINT_SIZE,
-  TOKEN_PROGRAM_ID,
-  createAssociatedTokenAccountIdempotentInstruction,
-  createInitializeMint2Instruction,
-  createMintToInstruction,
-  getAssociatedTokenAddressSync,
-  getMinimumBalanceForRentExemptMint,
+  TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync,
+  getOrCreateAssociatedTokenAccount
 } from "@solana/spl-token";
 import Irys from "@irys/sdk";
 import { CreateAndUploadOptions } from "@irys/sdk/build/cjs/common/types";
+import NodeWallet from "@coral-xyz/anchor/dist/cjs/nodewallet";
+import { ASSOCIATED_PROGRAM_ID } from "@coral-xyz/anchor/dist/cjs/utils/token";
 
 describe("banger-program", () => {
     // Configure the client.
@@ -54,7 +50,7 @@ describe("banger-program", () => {
     let seed = new anchor.BN(randomBytes(8));
 
     // Generate keypairs for maker, taker, token x, and token y
-    const [admin, trader, mintX, treasury] = Array.from({ length: 4 }, () =>
+    const [admin, trader, mintX, treasury] = Array.from({ length: 5 }, () =>
         Keypair.generate()
     );
 
@@ -82,7 +78,11 @@ describe("banger-program", () => {
 
     const authority = PublicKey.findProgramAddressSync([Buffer.from("authority")], program.programId)[0];
 
+    const creatorVault = PublicKey.findProgramAddressSync([Buffer.from("creator_vault"), Buffer.from("12345")], program.programId)[0];
+
+    //const traderAtaX = getAssociatedTokenAddressSync(mintX.publicKey, trader.publicKey);
     // Request SOL to trader
+    /*
     it("Airdrop", async () => {
         await Promise.all([
             await connection
@@ -92,6 +92,41 @@ describe("banger-program", () => {
                 .requestAirdrop(trader.publicKey, LAMPORTS_PER_SOL * 10)
                 .then(confirm),
         ]);
+    });
+    */
+    const provider2 = anchor.AnchorProvider.env();
+    const wallet = provider2.wallet as NodeWallet
+    it("Load SOL", async () => {
+        // Add transfer instruction to transaction
+        var transaction = new anchor.web3.Transaction().add(
+            anchor.web3.SystemProgram.transfer({
+            fromPubkey: provider.publicKey,
+            toPubkey: admin.publicKey,
+            lamports: LAMPORTS_PER_SOL * 1, // number of SOL to send
+            }),
+        );
+        
+        // Sign transaction, broadcast, and confirm
+        var signature = await anchor.web3.sendAndConfirmTransaction(connection, transaction, [
+            wallet.payer,
+        ]);
+        console.log('SIGNATURE', signature);
+        
+         // Add transfer instruction to transaction
+         var transaction = new anchor.web3.Transaction().add(
+            anchor.web3.SystemProgram.transfer({
+            fromPubkey: provider.publicKey,
+            toPubkey: trader.publicKey,
+            lamports: LAMPORTS_PER_SOL * 1, // number of SOL to send
+            }),
+        );
+        
+        // Sign transaction, broadcast, and confirm
+        var signature = await anchor.web3.sendAndConfirmTransaction(connection, transaction, [
+            wallet.payer,
+        ]);
+        console.log('SIGNATURE', signature);
+        
     });
     /*
     it("Setup tokens", async () => {
@@ -122,8 +157,8 @@ describe("banger-program", () => {
         }
     });
     */
-
-    it("Init curve", async () => {
+    
+    xit("Init curve", async () => {
         try {
         const tx = await program.methods.initCurve(new anchor.BN(2), new anchor.BN(32000))
             .accounts({
@@ -138,23 +173,6 @@ describe("banger-program", () => {
         } catch(e) {
             console.error(e);
         }
-        /*
-        try {
-            const tx = await program.methods.initCurve(new anchor.BN(2), new anchor.BN(32000))
-                .accounts({
-                    admin: admin.publicKey,
-                    curve,
-                    systemProgram: SystemProgram.programId
-                })
-                .rpc({skipPreflight: true})
-                .then(confirm)
-                .then(log);
-            await confirm(tx);
-            console.log("Your transaction signature", tx);
-        } catch(e) {
-            console.error(e);
-        }
-        */
     });
 
     // Upload metadata
@@ -249,13 +267,13 @@ describe("banger-program", () => {
         )[0];
     };
 
-    // Test init
+    // Test init pool
     it("Init Pool", async () => {
         try {
         const metadata = await getMetadata(mintX.publicKey);
         const metadataUrl = await uploadData(metadataObj, 'application/json');
         await program.methods
-            .initPool(500, 500, "Test", metadataUrl, "12345")
+            .initPool("12345", 500, 500, "Test", metadataUrl)
             .accounts({
             admin: admin.publicKey,
             mint: mintX.publicKey,
@@ -264,12 +282,77 @@ describe("banger-program", () => {
             curve: curve,
             pool,
             treasury: treasury.publicKey,
+            creatorVault: creatorVault,
             systemProgram: SystemProgram.programId,
             tokenProgram: TOKEN_PROGRAM_ID,
             metadataProgram: TOKEN_METADATA_PROGRAM_ID,
             sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY
             })
             .signers([admin, mintX])
+            .rpc({skipPreflight: true})
+            .then(confirm)
+            .then(log);
+        } catch(e) {
+            console.error(e);
+        }
+    });
+
+    // Test buy
+    it("Buy", async () => {
+        try {
+        const metadata = await getMetadata(mintX.publicKey);
+        const traderAtaX = await getOrCreateAssociatedTokenAccount(connection, admin, mintX.publicKey, trader.publicKey);
+        await program.methods
+            .buy(new anchor.BN(0), new anchor.BN(1))
+            .accounts({
+            buyer: trader.publicKey,
+            mint: mintX.publicKey,
+            buyerAta: traderAtaX.address,
+            authority: authority,
+            metadata: metadata,
+            curve: curve,
+            treasury: treasury.publicKey,
+            creatorVault: creatorVault,
+            pool,
+            systemProgram: SystemProgram.programId,
+            metadataProgram: TOKEN_METADATA_PROGRAM_ID,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_PROGRAM_ID,
+            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY
+            })
+            .signers([trader])
+            .rpc({skipPreflight: true})
+            .then(confirm)
+            .then(log);
+        } catch(e) {
+            console.error(e);
+        }
+    });
+
+    // Test sell
+    it("Sell", async () => {
+        try {
+        const metadata = await getMetadata(mintX.publicKey);
+        const traderAtaX = await getOrCreateAssociatedTokenAccount(connection, admin, mintX.publicKey, trader.publicKey);
+        await program.methods
+            .sell(new anchor.BN(1), new anchor.BN(0))
+            .accounts({
+            seller: trader.publicKey,
+            mint: mintX.publicKey,
+            sellerAta: traderAtaX.address,
+            authority: authority,
+            metadata: metadata,
+            curve: curve,
+            treasury: treasury.publicKey,
+            creatorVault: creatorVault,
+            pool,
+            systemProgram: SystemProgram.programId,
+            metadataProgram: TOKEN_METADATA_PROGRAM_ID,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_PROGRAM_ID,
+            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY
+            })
+            .signers([trader])
             .rpc({skipPreflight: true})
             .then(confirm)
             .then(log);

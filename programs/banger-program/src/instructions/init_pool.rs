@@ -64,7 +64,7 @@ pub struct InitPool<'info> {
         seeds = [b"creator_vault", creator_id.as_bytes()],
         bump
     )]
-    pub creator_vault: UncheckedAccount<'info>,
+    pub creator_vault: SystemAccount<'info>,
 
     system_program: Program<'info, System>,
     token_program: Program<'info, Token>,
@@ -78,11 +78,11 @@ pub struct InitPool<'info> {
 impl<'info> InitPool<'info> {
     pub fn init_pool(
         &mut self,
+        creator_id: String,
         creator_fee: u16,
         banger_fee: u16,
         token_name: String,
         token_metadata_uri: String,
-        creator_id: String,
         bumps: &InitPoolBumps
     ) -> Result<()> {
         

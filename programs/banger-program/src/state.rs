@@ -14,7 +14,7 @@ pub struct Pool {
 }
 
 impl Space for Pool {
-    const INIT_SPACE: usize = 8 + 32*4 + (4+32) + 2*2 + 1*4;
+    const INIT_SPACE: usize = 8 + 32*4 + (4+32) + 2*2 + 1*2;
 }
 
 #[account]

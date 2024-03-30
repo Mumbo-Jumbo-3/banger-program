@@ -1,4 +1,4 @@
-use anchor_lang::{prelude::*, system_program::{transfer, Transfer}};
+use anchor_lang::prelude::*;
 use anchor_spl::{
     metadata::Metadata,
     associated_token::AssociatedToken,
@@ -8,9 +8,7 @@ use anchor_spl::{
         TokenAccount
     }};
 use mpl_token_metadata::instructions::{
-        BurnV1Cpi,
-        BurnV1CpiAccounts,
-        BurnV1InstructionArgs,
+        BurnV1Cpi, BurnV1CpiAccounts, BurnV1InstructionArgs, DelegateStandardV1Cpi, DelegateStandardV1CpiAccounts, DelegateStandardV1InstructionArgs
     };
 pub use anchor_lang::solana_program::sysvar::instructions::ID as INSTRUCTIONS_ID;
 use crate::state::{Pool, Curve};
@@ -45,6 +43,7 @@ pub struct Sell<'info> {
 
     pub curve: Account<'info, Curve>,
 
+    #[account(mut)]
     pub treasury: SystemAccount<'info>,
 
     // CHECK: checked by seeds
@@ -53,7 +52,7 @@ pub struct Sell<'info> {
         seeds = [b"creator_vault", pool.creator_id.as_bytes()],
         bump
     )]
-    pub creator_vault: UncheckedAccount<'info>,
+    pub creator_vault: SystemAccount<'info>,
 
     #[account(
         mut,
@@ -106,31 +105,53 @@ impl<'info> Sell<'info> {
         
         require!(amount_out >= total, CurveError::Slippage);
         
+        /*
+        let seeds = &[
+            &b"pool"[..],
+            &self.mint.to_account_info().key.as_ref(),
+            &[self.pool.bump],
+        ];
+
+        let signer_seeds = &[&seeds[..]];
+        
         // Transfer subtotal to seller
         let accounts = Transfer {
             from: self.pool.to_account_info(),
             to: self.seller.to_account_info()
         };
 
-        let cpi_ctx = CpiContext::new(self.system_program.to_account_info(), accounts);
-
+        let cpi_ctx = CpiContext::new_with_signer(self.system_program.to_account_info(), accounts, signer_seeds);
         transfer(cpi_ctx, subtotal)?;
+        */
+        msg!("CPI1");
 
-        // Transfer creator fee
+        **self.pool.to_account_info().try_borrow_mut_lamports()? -= subtotal;
+        **self.seller.to_account_info().try_borrow_mut_lamports()? += subtotal;
+        
+        /*
         let accounts = Transfer {
             from: self.pool.to_account_info(),
             to: self.creator_vault.to_account_info()
         };
-        let cpi_ctx = CpiContext::new(self.system_program.to_account_info(), accounts);
+        let cpi_ctx = CpiContext::new_with_signer(self.system_program.to_account_info(), accounts, signer_seeds);
         transfer(cpi_ctx, creator_fee)?;
-
+        */
+        msg!("CPI2");
+        **self.pool.to_account_info().try_borrow_mut_lamports()? -= creator_fee;
+        **self.creator_vault.to_account_info().try_borrow_mut_lamports()? += creator_fee;
+        
+        /*
         // Transfer Banger fee
         let accounts = Transfer {
             from: self.pool.to_account_info(),
             to: self.treasury.to_account_info()
         };
-        let cpi_ctx = CpiContext::new(self.system_program.to_account_info(), accounts);
+        let cpi_ctx = CpiContext::new_with_signer(self.system_program.to_account_info(), accounts, signer_seeds);
         transfer(cpi_ctx, banger_fee)?;
+        */
+        msg!("CPI3");
+        **self.pool.to_account_info().try_borrow_mut_lamports()? -= banger_fee;
+        **self.treasury.to_account_info().try_borrow_mut_lamports()? += banger_fee;
 
         // Burn tokens from seller
         let seeds = &[
@@ -143,10 +164,36 @@ impl<'info> Sell<'info> {
         let authority = &self.authority.to_account_info();
         let metadata = &self.metadata.to_account_info();
         let mint = &self.mint.to_account_info();
+        let seller = &self.seller.to_account_info();
         let token = &self.seller_ata.to_account_info();
         let system_program = &self.system_program.to_account_info();
         let sysvar_instructions = &self.sysvar_instructions.to_account_info();
         let spl_token_program = &self.token_program.to_account_info();
+
+        let delegate_authority = DelegateStandardV1Cpi::new(
+            metadata_program,
+            DelegateStandardV1CpiAccounts {
+                delegate_record: None,
+                delegate: authority,
+                metadata,
+                master_edition: None,
+                token_record: None,
+                mint,
+                token,
+                authority: seller,
+                payer: seller,
+                system_program,
+                sysvar_instructions,
+                spl_token_program: Some(spl_token_program),
+                authorization_rules_program: None,
+                authorization_rules: None,
+            },
+            DelegateStandardV1InstructionArgs {
+                amount: self.seller_ata.amount
+            }
+        );
+        delegate_authority.invoke_signed(signer_seeds)?;
+        msg!("Delegated authority!");
         
         let burn_tokens = BurnV1Cpi::new(
             metadata_program,

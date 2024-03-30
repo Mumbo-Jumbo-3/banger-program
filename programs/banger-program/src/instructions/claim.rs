@@ -10,15 +10,13 @@ pub struct Claim<'info> {
     #[account(mut)]
     pub creator: Signer<'info>,
 
-    pub authority: UncheckedAccount<'info>,
-
     /// CHECK: ok
     #[account(
         mut,
         seeds = [b"creator_vault", creator_id.as_bytes()],
         bump
     )]
-    pub creator_vault: UncheckedAccount<'info>,
+    pub creator_vault: SystemAccount<'info>,
 
     pub system_program: Program<'info, System>
 }
@@ -32,9 +30,9 @@ impl<'info> Claim<'info> {
 
         let seeds = &[
             &b"creator_vault"[..],
-            &[creator_id.as_bytes()],
+            &creator_id.as_bytes()[..],
         ];
-        let signer_seeds = [&[&seeds[..]]];
+        let signer_seeds = &[&seeds[..]];
 
         let cpi_ctx = CpiContext::new_with_signer(self.system_program.to_account_info(), cpi_accounts, signer_seeds);
 
