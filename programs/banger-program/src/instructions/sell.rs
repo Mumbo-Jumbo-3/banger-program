@@ -189,10 +189,10 @@ impl<'info> Sell<'info> {
                 authorization_rules: None,
             },
             DelegateStandardV1InstructionArgs {
-                amount: self.seller_ata.amount
+                amount: num_burn
             }
         );
-        delegate_authority.invoke_signed(signer_seeds)?;
+        delegate_authority.invoke()?;
         msg!("Delegated authority!");
         
         let burn_tokens = BurnV1Cpi::new(
@@ -214,7 +214,7 @@ impl<'info> Sell<'info> {
                 spl_token_program,
             },
             BurnV1InstructionArgs {
-                amount: num_burn as u64
+                amount: num_burn
             }
         );
         burn_tokens.invoke_signed(signer_seeds)?;
