@@ -83,12 +83,18 @@ impl<'info> Buy<'info> {
 
         for i in 0..num_mint {
             let supply = current_supply + i;
+            let supply_str = supply.to_string();
+            let supply_str_ref = supply_str.as_str();
+            msg!(supply_str_ref);
             let price = supply
                 .checked_pow(self.curve.pow as u32).ok_or(CurveError::Overflow)?
                 .checked_div(self.curve.frac).ok_or(CurveError::Overflow)?;
 
             subtotal = subtotal.checked_add(price).ok_or(CurveError::Overflow)?;
         }
+        let subtotal1_str = subtotal.to_string();
+        let subtotal1_str_ref = subtotal1_str.as_ref();
+        msg!(subtotal1_str_ref);
 
         subtotal = subtotal.checked_mul(1_000_000_000).ok_or(CurveError::Overflow)?;
 
@@ -103,6 +109,9 @@ impl<'info> Buy<'info> {
         let total = subtotal
             .checked_add(banger_fee).ok_or(CurveError::Overflow)?
             .checked_add(creator_fee).ok_or(CurveError::Overflow)?;
+
+        let current_supply_str = current_supply.to_string();
+        let current_supply_str_ref = current_supply_str.as_str();
 
         let amount_in_str = amount_in.to_string();
         let amount_in_str_ref = amount_in_str.as_str();
@@ -124,7 +133,8 @@ impl<'info> Buy<'info> {
         
         let total_str = total.to_string();
         let total_str_ref = total_str.as_ref();
-        
+
+        msg!(current_supply_str_ref);
         msg!(amount_in_str_ref);
         msg!(num_mint_str_ref);
         msg!(pow_str_ref);
