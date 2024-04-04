@@ -102,7 +102,12 @@ impl<'info> Sell<'info> {
         let subtotal = total
             .checked_sub(banger_fee).ok_or(CurveError::Overflow)?
             .checked_sub(banger_fee).ok_or(CurveError::Overflow)?;
-        
+        let amount_out_str = amount_out.to_string();
+        let amount_out_str_ref = amount_out_str.as_str();
+        let total_str = total.to_string();
+        let total_str_ref = total_str.as_ref();
+        msg!(amount_out_str_ref);
+        msg!(total_str_ref);
         require!(amount_out >= total, CurveError::Slippage);
 
         **self.pool.to_account_info().try_borrow_mut_lamports()? -= subtotal;

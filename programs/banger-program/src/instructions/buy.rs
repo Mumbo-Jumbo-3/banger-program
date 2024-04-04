@@ -102,8 +102,36 @@ impl<'info> Buy<'info> {
 
         let total = subtotal
             .checked_add(banger_fee).ok_or(CurveError::Overflow)?
-            .checked_add(banger_fee).ok_or(CurveError::Overflow)?;
+            .checked_add(creator_fee).ok_or(CurveError::Overflow)?;
+
+        let amount_in_str = amount_in.to_string();
+        let amount_in_str_ref = amount_in_str.as_str();
+
+        let num_mint_str = num_mint.to_string();
+        let num_mint_str_ref = num_mint_str.as_str();
+
+        let pow_str = self.curve.pow.to_string();
+        let pow_str_ref = pow_str.as_ref();
+
+        let frac_str = self.curve.frac.to_string();
+        let frac_str_ref = frac_str.as_ref();
+
+        let subtotal_str = subtotal.to_string();
+        let subtotal_str_ref = subtotal_str.as_ref();
+
+        let creator_fee_str = creator_fee.to_string();
+        let creator_fee_str_ref = creator_fee_str.as_ref();                
         
+        let total_str = total.to_string();
+        let total_str_ref = total_str.as_ref();
+        
+        msg!(amount_in_str_ref);
+        msg!(num_mint_str_ref);
+        msg!(pow_str_ref);
+        msg!(frac_str_ref);
+        msg!(subtotal_str_ref);
+        msg!(creator_fee_str_ref);
+        msg!(total_str_ref);
         require!(amount_in <= total, CurveError::Slippage);
 
         // Transfer subtotal to pool
